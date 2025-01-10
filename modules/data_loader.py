@@ -1,30 +1,29 @@
 import pandas as pd
-from langchain.schema import Document
+import logging
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def load_data(file_path):
     """
-    Load dataset from a CSV file and convert it into a list of Document objects.
-    Each document represents a question-answer pair.
+    Loads and validates Q&A data from a CSV file.
+    
+    Args:
+        file_path (str): Path to the CSV file containing questions and answers
+        
+    Returns:
+        pandas.DataFrame: DataFrame containing the Q&A pairs
+        
+    Raises:
+        Exception: If there's an error loading the data or if required columns are missing
     """
     try:
-        # Load the CSV file into a DataFrame
-        df = pd.read_csv(file_path)
-
-        # Ensure the columns are present in the dataset
-        if 'Question' not in df.columns or 'Answer' not in df.columns:
-            raise ValueError("CSV must have 'Question' and 'Answer' columns")
-
-        # Convert each row to a Document object
-        documents = []
-        for _, row in df.iterrows():
-            question = row['Question']
-            answer = row['Answer']
-            document = Document(page_content=f"Question: {question} Answer: {answer}")
-            documents.append(document)
+        data = pd.read_csv(file_path)
+        if 'question' not in data.columns or 'answer' not in data.columns:
+            raise ValueError("CSV must have 'question' and 'answer' columns.")
         
-        return documents
-
+        logger.info(f"Successfully loaded {len(data)} Q&A pairs from {file_path}")
+        return data
     except Exception as e:
-        print(f"Error in loading data: {e}")
-        return []
+        logger.error(f"Error loading data: {e}")
+        raise Exception(f"Error loading data: {e}")

@@ -1,53 +1,85 @@
-from langchain.vectorstores import FAISS
-from langchain.chains import ConversationalRetrievalChain
-from langchain.llms import HuggingFaceHub
-from langchain.embeddings import HuggingFaceEmbeddings
-from modules.data_loader import load_data
+from sentence_transformers import SentenceTransformer
+from langchain_community.vectorstores import FAISS
+from langchain_community.embeddings import SentenceTransformerEmbeddings
+from langchain.schema import Document
 import logging
-import os
 
+logger = logging.getLogger(__name__)
 
-def initialize_system(file_path):
-    """
-    Initialize the RAG system with the dataset from the file path.
-    """
-    try:
-        logging.info("Initializing system...")
+class RAGSystem:
+    def __init__(self, data):
+        """
+        Initializes the RAG system with the provided dataset.
+        
+        Args:
+            data (pandas.DataFrame): DataFrame containing questions and answers
+        """
+        self.data = data
+        self.knowledge_base = None
+        self.initialize_system()
 
-        # Load the dataset as Document objects
-        documents = load_data(file_path)
-        if not documents:
-            raise ValueError("No documents were loaded.")
+    def create_documents(self):
+        """
+        Creates document objects from the dataset.
+        
+        Returns:
+            list: List of Document objects containing questions and their corresponding answers
+        """
+        documents = []
+        for _, row in self.data.iterrows():
+            doc = Document(
+                page_content=row['question'],
+                metadata={'answer': row['answer']}
+            )
+            documents.append(doc)
+        return documents
 
-        # Load pre-trained model for embeddings
-        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    def initialize_system(self):
+        """
+        Sets up the vectorstore and embedding system using document format.
+        """
+        try:
+            embedding_function = SentenceTransformerEmbeddings(
+                model_name='sentence-transformers/all-MiniLM-L6-v2'
+            )
+            
+            documents = self.create_documents()
+            
+            self.knowledge_base = FAISS.from_documents(
+                documents=documents,
+                embedding=embedding_function
+            )
+            
+            logger.info(f"RAG system initialized successfully with {len(documents)} documents")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize RAG system: {e}")
+            raise
 
-        # Create the FAISS vectorstore
-        vectorstore = FAISS.from_documents(documents, embeddings)
-        logging.info("FAISS vectorstore created successfully")
-
-        # Initialize the LLM (Language Model) for generating responses
-        # Specify the model repository ID in the 'repo_id'
-        llm = HuggingFaceHub(
-            repo_id="google/flan-t5-base",  # Replace with the actual model ID you want to use
-            huggingfacehub_api_token = "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",
-            model_kwargs={"do_sample": True}
-        )
-
-        # Setup the retriever using the vectorstore
-        retriever = vectorstore.as_retriever()
-
-        # Set up the ConversationalRetrievalChain
-        rag_chain = ConversationalRetrievalChain.from_llm(
-            llm,
-            retriever=retriever,
-            return_source_documents=False  # Only the answer, no source documents
-        )
-
-        logging.info("LLM initialized successfully")
-
-        return rag_chain
-
-    except Exception as e:
-        logging.error(f"System initialization error: {e}")
-        raise
+    def generate_response(self, query, similarity_threshold=1.5):
+        """
+        Generates a response for the given query using document-based search.
+        
+        Args:
+            query (str): The user's question
+            similarity_threshold (float): Maximum similarity score for considering an answer relevant
+            
+        Returns:
+            str: The most relevant answer from the knowledge base
+        """
+        try:
+            search_results = self.knowledge_base.similarity_search_with_score(query, k=1)
+            
+            if not search_results:
+                return "No relevant answer found in the knowledge base."
+                
+            best_match, score = search_results[0]
+            
+            if score > similarity_threshold:
+                return "I couldn't find a sufficiently relevant answer in the knowledge base."
+                
+            return best_match.metadata['answer']
+            
+        except Exception as e:
+            logger.error(f"Error generating response: {e}")
+            return f"An error occurred while processing your question: {str(e)}"
