@@ -1,12 +1,9 @@
 streamlit
 langchain
-openai
-faiss-cpu
 pandas
 sentence-transformers
 langchain_community
-dataloader
-google-api-core
-google-cloud-dialogflow==2
+
+
 
 
