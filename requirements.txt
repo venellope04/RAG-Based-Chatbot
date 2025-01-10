@@ -1,9 +1,8 @@
 streamlit
 langchain
+faiss-cpu
 pandas
 sentence-transformers
 langchain_community
-
-
 
 
