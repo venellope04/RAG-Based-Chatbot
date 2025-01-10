@@ -1,0 +1,14 @@
+
+# Python bytecode files
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environment
+venv/
+
+# IDE-specific files
+.vscode/
+
+
+embeddings_cache.pkl
