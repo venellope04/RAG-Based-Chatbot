@@ -1,84 +1,53 @@
-# modules/rag_pipeline.py
-import logging
-from langchain.chains import ConversationalRetrievalChain
 from langchain.vectorstores import FAISS
+from langchain.chains import ConversationalRetrievalChain
 from langchain.llms import HuggingFaceHub
-from langchain.schema import Document
 from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.prompts import PromptTemplate
+from modules.data_loader import load_data
+import logging
+import os
 
-# Initialize logging
-logging.basicConfig(level=logging.INFO)
 
-class CustomHuggingFaceEmbeddings(HuggingFaceEmbeddings):
-    def __init__(self):
-        super().__init__(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
-            model_kwargs={'device': 'cpu'},
-            encode_kwargs={'normalize_embeddings': True}
-        )
-
-def initialize_system(data_dict):
+def initialize_system(file_path):
+    """
+    Initialize the RAG system with the dataset from the file path.
+    """
     try:
         logging.info("Initializing system...")
 
-        # Initialize embedding model
-        embed_model = CustomHuggingFaceEmbeddings()
-        logging.info("Embedding model initialized")
+        # Load the dataset as Document objects
+        documents = load_data(file_path)
+        if not documents:
+            raise ValueError("No documents were loaded.")
 
-        # Create documents
-        documents = []
-        for doc_id, (question, answer) in data_dict.items():
-            text = f"Question: {question}\nAnswer: {answer}"
-            documents.append(
-                Document(
-                    page_content=text,
-                    metadata={"id": doc_id, "question": question, "answer": answer}
-                )
-            )
+        # Load pre-trained model for embeddings
+        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-        logging.info(f"Created {len(documents)} documents")
+        # Create the FAISS vectorstore
+        vectorstore = FAISS.from_documents(documents, embeddings)
+        logging.info("FAISS vectorstore created successfully")
 
-        # Create FAISS vectorstore
-        try:
-            vectorstore = FAISS.from_documents(
-                documents=documents,
-                embedding=embed_model
-            )
-            logging.info("FAISS vectorstore created successfully")
-        except Exception as e:
-            logging.error(f"Failed to create vectorstore: {e}")
-            raise
+        # Initialize the LLM (Language Model) for generating responses
+        # Specify the model repository ID in the 'repo_id'
+        llm = HuggingFaceHub(
+            repo_id="google/flan-t5-base",  # Replace with the actual model ID you want to use
+            huggingfacehub_api_token = "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",
+            model_kwargs={"do_sample": True}
+        )
 
-      
+        # Setup the retriever using the vectorstore
+        retriever = vectorstore.as_retriever()
 
-        # Initialize LLM
-        try:
-            llm = HuggingFaceHub(
-                repo_id="tiiuae/falcon-7b-instruct",
-                model_kwargs={
-                    "temperature": 0.5,
-                    "max_length": 512,
-                    "do_sample": True
-                }
-            )
-            logging.info("LLM initialized successfully")
-        except Exception as e:
-            logging.error(f"Failed to initialize LLM: {e}")
-            raise
+        # Set up the ConversationalRetrievalChain
+        rag_chain = ConversationalRetrievalChain.from_llm(
+            llm,
+            retriever=retriever,
+            return_source_documents=False  # Only the answer, no source documents
+        )
 
-       
+        logging.info("LLM initialized successfully")
 
-        except Exception as e:
-            logging.error(f"Failed to create RAG chain: {e}")
-            raise
+        return rag_chain
 
     except Exception as e:
-        logging.error(f"System initialization failed: {e}")
-        raise
-
-
-            
-    except Exception as e:
-        logging.error(f"Error getting response: {e}")
+        logging.error(f"System initialization error: {e}")
         raise
